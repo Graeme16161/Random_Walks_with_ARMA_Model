@@ -1,0 +1,136 @@
+---
+title: "Random Walks with the ARMA Model"
+author: "Graeme Keleher"
+date: "June 17, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Load Packages
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(MASS)
+library(quantmod)
+```
+
+#Characteristics of a True Random Walk
+A true random walk is a martingale, meaning the expected value of the walk at time t+1 is the value at t.
+
+##Define a Basic Random Walk
+I am using the armia.sim function which is part of base R.
+```{r}
+# Generate a random walk model witout drift and a standard deviation of 1.
+random_walk <- arima.sim(model = list(order = c(0, 1, 0)), n = 1000, mean = 0, sd = 1)
+
+# Calculate the first difference of the random walk, this will be white noise for a true random walk.
+random_walk_diff <- diff(random_walk)
+```
+
+##Plots of Random Walk and the Distribution of Increments
+The random walk looks as it should and we get what looks like a rough normal distribution in the histogram of increments. 
+
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+random_walk_df = as.data.frame(random_walk)
+white_noise_df = as.data.frame(random_walk_diff)
+
+graph_RW =  mutate(random_walk_df,time = row_number())
+graph_WN =  mutate(white_noise_df,time = row_number())
+
+ggplot(graph_RW, aes(time, x)) + geom_line() +
+  labs(title = "Sample Random Walk", x = "Time", y = "X Value")
+
+ggplot(graph_WN, aes(x)) + geom_histogram() +
+  labs(title = "Histogram of Increment Sizes in Random Walk", x = "Step Size", y = "")
+```
+
+##Fit Normal Distribtion to Increment Data
+As expected, the fitdistr function fits the data to a normal distribution with a mean of ~0 and standard deviation of ~1.
+```{r}
+Noise_Vec = as.vector(white_noise_df$x)
+fitdistr(Noise_Vec, "normal")
+```
+
+##Q-Q plot
+The QQ plot clearly shows that the increments of the simulated random walk are all but normally distributed.
+```{r, echo = -1}
+plot(qqnorm(Noise_Vec),main = "Q-Q Plot of Simulated Random Walk Increments", xlab = "Normal Theoretical Quantiles", ylab = "Normal Data Quantiles")
+qqline(Noise_Vec,col = "red")
+```
+
+
+##Plots of Autocorrelation
+Below are autocorrelation plots for the origional random walk and the derived white noise. As expected that is a very high level of persistence for the random walk. However, there is no meaningful autocorrelation for the white noise.
+```{r message=FALSE, warning=FALSE}
+#for random walk
+acf(random_walk, main = "Autocorrelation of the Random Walk")
+
+#for random walk increment size
+acf(random_walk_diff, main =  "Autocorrelation of the White Noise")
+```
+
+#Is the Stock Market a Random Walk?
+Famously, it has been hypothesized that the stock market can be modeled as a random walk. More specifically, the log of the price can be modeled as a random walk with drift. Below, I compare the characteristics of s&P 500 data with those of the 'pure' random walk above.
+
+##Create a Time Series Object of S&P 500 Closing Prices
+For simplicity I am disregrarding actual dates and working with the data as trading days since January 3rd 2007.The price that I am choosing to work with is the log of the closing value for a given day
+```{r message=FALSE, warning=FALSE}
+getSymbols("^GSPC", src = "yahoo")
+SP_Close = log(as.ts(GSPC$GSPC.Close))
+```
+
+##Plot S&P 500 Closing Prices
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+SP_Close_df = as.data.frame(SP_Close)
+
+graph_SP_Close =  mutate(SP_Close_df,time = row_number())
+
+ggplot(graph_SP_Close, aes(time, x)) + geom_line() +
+  labs(title = "Log of the S&P 500", x = "Number of Trading Days Since January 3rd 2007", y = "S&P 500 Closing Value")
+```
+
+##Create Differences
+```{r}
+SP_Diff = diff(SP_Close)
+```
+
+#Create Increment Histogram 
+Again, the shape looks decently normal.
+```{r, echo = FALSE}
+SP_df = as.data.frame(SP_Diff)
+
+graph_SP =  mutate(SP_df,time = row_number())
+
+ggplot(graph_SP, aes(x)) + geom_histogram() +
+  labs(title = "Histogram of Log of S&P 500 Daily Closing Change", x = "Step Size", y = "")
+
+```
+
+##Fit Normal Distribtion to S&P 500 Increment Data
+This result shows that the S&P 500 is not a pure random walk. A better model would be a random walk with drift. 
+```{r}
+SP_Vec = as.vector(SP_df$x)
+fitdistr(SP_Vec, "normal")
+```
+##Q-Q Plot of S&P 500 Increments
+The Q-Q plot clearly shows that if the S&P 500 can be modeled as a random walk the noise term should definately not be modeled as normal distribution. The tails are extreamly heavy.
+```{r, echo = FALSE}
+invisible(plot(qqnorm(SP_Vec),main = "Q-Q Plot of Log of S&P 500 Increments", xlab = "Normal Theoretical Quantiles", ylab = "Normal Data Quantiles"))
+qqline(SP_Vec,col = "red")
+```
+
+
+##Plots of Autocorrelation for S&P 500
+There appears to be great persistence for the S&P 500 itself while possible none for it's incremenets. From the chart, there does appear to be a slight negative autocorrelation with lag of one trading day. I would suspect this is not actually true as someone else would have noticed this by now and traded accordingly to make the correlation dissapear. Additionally, if there truely is some correlation, then the S&P 500 cannot be modeled as a random walk. 
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+acf(SP_Close,main = "Autocorrelation of Log of S&P 500")
+
+acf(SP_Diff,main = "Autocorrelation of Log of S&P 500 Increments")
+```
+
+
+
+
+
